@@ -7,20 +7,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 
 # ==============================================================================
-# ⚙️ CONFIGURAÇÃO E ESTILO (NEON ORIGINAL)
+# ⚙️ CONFIGURAÇÃO E ESTILO
 # ==============================================================================
 st.set_page_config(page_title="GymBot Performance", page_icon="⚡", layout="wide")
 
-# Paleta de Cores
 NEON_GREEN = "#00ff88"
 DARK_BG = "#000000"
 CARD_BG = "#121212"
 
 st.markdown(f"""
 <style>
-    /* FUNDO PRETO ABSOLUTO */
     .stApp {{ background-color: {DARK_BG}; color: #ffffff; }}
-    
     header[data-testid="stHeader"] {{ background-color: rgba(0,0,0,0); }}
     .block-container {{ padding-top: 1rem; padding-bottom: 5rem; }}
     
@@ -39,8 +36,6 @@ st.markdown(f"""
     h1, h2, h3, h4, h5 {{ font-family: 'Inter', sans-serif; font-weight: 700; color: white !important; }}
     
     .highlight-text {{ color: {NEON_GREEN}; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }}
-    
-    /* Métricas Grandes */
     .big-metric {{ font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; color: #fff; line-height: 1; }}
     .metric-label {{ font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 5px; }}
 
@@ -48,7 +43,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🔗 CONEXÃO E LEITURA DE DADOS
+# 🔗 CONEXÃO
 # ==============================================================================
 def connect_google():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -63,7 +58,6 @@ def connect_google():
 def get_data(telefone):
     try:
         sh = connect_google()
-        # 1. Pega Nome
         nome_real = "Atleta"
         try:
             ws_users = sh.worksheet("Usuarios")
@@ -71,12 +65,10 @@ def get_data(telefone):
             if cell: nome_real = ws_users.cell(cell.row, 2).value
         except: pass
 
-        # 2. Pega Treinos
         ws_treino = sh.worksheet(str(telefone))
         data = ws_treino.get_all_records()
         df = pd.DataFrame(data)
         
-        # Limpeza
         df.columns = df.columns.str.strip()
         mapa = {'Carga': 'Carga_Kg', 'carga': 'Carga_Kg', 'Data': 'Data', 'Exercicio': 'Exercicio'}
         cols_atuais = {c: c for c in df.columns}
@@ -87,11 +79,8 @@ def get_data(telefone):
         if 'Carga' not in df.columns: df['Carga'] = 0
         if 'Data' not in df.columns: df['Data'] = datetime.today().strftime("%d/%m/%Y")
         
-        # Tratamento Numérico e Data
         df['Carga'] = pd.to_numeric(df['Carga'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         df['Data_Dt'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
-        
-        # ORDENAÇÃO
         df = df.dropna(subset=['Data_Dt']).sort_values(by='Data_Dt')
         
         return df, nome_real
@@ -106,34 +95,43 @@ def estimar_calorias(row):
     return (row['Carga'] * reps * series) * 0.005
 
 # ==============================================================================
-# 📊 GRÁFICOS (EFEITO GLASS + INTERATIVIDADE)
+# 📊 GRÁFICOS INTERATIVOS
 # ==============================================================================
-def plot_barras_neon(df_semana):
+def plot_barras_interativo(df_semana, selecionado=None):
     df_semana = df_semana.sort_values(by='Data_Dt')
     df_semana['Dia_Str'] = df_semana['Data_Dt'].dt.strftime('%d/%m')
     
     dados = df_semana.groupby('Dia_Str', sort=False)['Calorias'].sum().reset_index()
     
-    # --- EFEITO GLASS ---
-    # Fundo bem transparente (0.1) e Borda mais visível (0.5)
-    fill_colors = ['rgba(0, 255, 136, 0.15)'] * len(dados) 
-    line_colors = ['rgba(0, 255, 136, 0.4)'] * len(dados)  
+    # --- LÓGICA DE SELEÇÃO ---
+    # Se ninguém foi clicado, o último (hoje) fica aceso
+    # Se alguém foi clicado, SÓ ele fica aceso
     
-    if len(fill_colors) > 0: 
-        fill_colors[-1] = NEON_GREEN  # Hoje é Sólido
-        line_colors[-1] = NEON_GREEN
+    cores = []
+    for dia in dados['Dia_Str']:
+        if selecionado:
+            if dia == selecionado:
+                cores.append(NEON_GREEN) # Aceso
+            else:
+                cores.append('rgba(0, 255, 136, 0.15)') # Apagado (Glass)
+        else:
+            # Comportamento padrão (Último aceso)
+            if dia == dados['Dia_Str'].iloc[-1]:
+                cores.append(NEON_GREEN)
+            else:
+                cores.append('rgba(0, 255, 136, 0.15)')
 
     fig = go.Figure(data=[go.Bar(
         x=dados['Dia_Str'],
         y=dados['Calorias'],
         marker=dict(
-            color=fill_colors,
-            line=dict(color=line_colors, width=1.5) # Borda Glass
+            color=cores,
+            cornerradius=10 # <--- AQUI ESTÁ O ARREDONDAMENTO DAS BARRAS
         ),
         text=dados['Calorias'].astype(int),
         textposition='outside',
         textfont=dict(color='#ccc', family="Inter, sans-serif", size=12),
-        hovertemplate='%{y} kcal<extra></extra>' # Tooltip limpo
+        hovertemplate='%{y} kcal<extra></extra>'
     )])
     
     fig.update_layout(
@@ -145,7 +143,8 @@ def plot_barras_neon(df_semana):
         showlegend=False,
         xaxis=dict(showgrid=False, tickfont=dict(color='#888', family="Inter, sans-serif"), fixedrange=True),
         yaxis=dict(showgrid=False, visible=False, fixedrange=True),
-        bargap=0.3
+        bargap=0.35,
+        clickmode='event+select' # Habilita o clique
     )
     return fig
 
@@ -156,7 +155,7 @@ def plot_donut_neon(valor, meta, cor, label):
         hole=0.85,
         marker_colors=[cor, "#1c1c1c"], 
         textinfo='none', 
-        hoverinfo='none', # Donut não precisa de hover
+        hoverinfo='none', 
         sort=False, 
         direction='clockwise'
     )])
@@ -169,7 +168,7 @@ def plot_donut_neon(valor, meta, cor, label):
     return fig
 
 # ==============================================================================
-# 🔐 LOGIN & APP
+# 📱 APP PRINCIPAL
 # ==============================================================================
 query_params = st.query_params
 usuario_url = query_params.get("id", None)
@@ -187,15 +186,14 @@ if 'telefone' not in st.session_state:
             st.rerun()
     st.stop()
 
-# --- CARREGAR DADOS ---
+# Carregar Dados
 df, nome = get_data(st.session_state['telefone'])
 
 if df is None:
-    st.error("⚠️ Perfil não encontrado ou planilha vazia.")
-    if st.button("Tentar Novamente"): st.rerun()
+    st.error("⚠️ Perfil não encontrado.")
     st.stop()
 
-# Processamento
+# Cálculos
 df['Calorias'] = df.apply(estimar_calorias, axis=1)
 hoje = datetime.today()
 df_hoje = df[df['Data_Dt'].dt.date == hoje.date()]
@@ -204,7 +202,7 @@ cals_hoje = df_hoje['Calorias'].sum()
 treinos_hoje = len(df_hoje)
 volume_hoje = df_hoje['Carga'].sum()
 
-# --- HEADER ---
+# HEADER
 c_perfil, c_btn = st.columns([8,1])
 with c_perfil:
     st.markdown(f"### Olá, <span class='highlight-text'>{nome.split()[0].upper()}</span>.", unsafe_allow_html=True)
@@ -222,19 +220,36 @@ with k2: st.plotly_chart(plot_donut_neon(treinos_hoje, 5, NEON_GREEN, "TREINOS")
 with k3: st.plotly_chart(plot_donut_neon(volume_hoje, 10000, "#8A2BE2", "VOL KG"), use_container_width=True, config={'displayModeBar': False})
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 2. BARRAS TRANSLÚCIDAS (GLASS + HOVER ATIVO)
+# 2. BARRAS INTERATIVAS (CLIQUE PARA ACENDER)
 st.markdown(f"<div class='css-card'><h3>📅 Gasto Calórico (7 Dias)</h3>", unsafe_allow_html=True)
 datas_unicas = df['Data_Dt'].drop_duplicates().sort_values(ascending=False).head(7)
+
 if not datas_unicas.empty:
     min_date = datas_unicas.min()
     df_sem = df[df['Data_Dt'] >= min_date]
-    # 'displayModeBar': False remove a barra de ferramentas, mas mantém o clique/hover!
-    st.plotly_chart(plot_barras_neon(df_sem), use_container_width=True, config={'displayModeBar': False})
+    
+    # Verifica se já tem algo selecionado na sessão
+    selection = st.session_state.get("bar_selection", None)
+    dia_selecionado = None
+    
+    # Se houver seleção, pega o X (Data)
+    if selection and selection.get("selection") and selection["selection"]["points"]:
+        dia_selecionado = selection["selection"]["points"][0]["x"]
+        
+        # Mostra detalhes do dia clicado
+        cals_dia = df_sem[df_sem['Data_Dt'].dt.strftime('%d/%m') == dia_selecionado]['Calorias'].sum()
+        st.caption(f"Selecionado: {dia_selecionado} — {int(cals_dia)} kcal")
+
+    # Plota o gráfico com a lógica de seleção
+    fig_barras = plot_barras_interativo(df_sem, selecionado=dia_selecionado)
+    
+    # on_select="rerun" faz o site recarregar quando você clica, atualizando as cores
+    st.plotly_chart(fig_barras, use_container_width=True, on_select="rerun", key="bar_selection", config={'displayModeBar': False})
 else:
     st.info("Sem dados recentes.")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 3. EVOLUÇÃO (LÓGICA DE UNIDADE CORRIGIDA)
+# 3. EVOLUÇÃO
 st.markdown(f"<div class='css-card'><h3>📈 Evolução por Exercício</h3>", unsafe_allow_html=True)
 exercicios = df['Exercicio'].unique()
 escolha = st.selectbox("", exercicios, label_visibility="collapsed")
@@ -244,7 +259,6 @@ if escolha:
     ult_carga = df_filt['Carga'].iloc[-1]
     max_carga = df_filt['Carga'].max()
     
-    # Lógica para detectar se é Cardio ou Peso
     eh_cardio = any(x in escolha.lower() for x in ['esteira', 'corrida', 'bike', 'eliptico', 'cardio'])
     unidade = "min" if eh_cardio else "kg"
     
@@ -259,7 +273,7 @@ if escolha:
         mode='lines+markers',
         line=dict(color=NEON_GREEN, width=3, shape='spline'),
         marker=dict(size=6, color=CARD_BG, line=dict(color=NEON_GREEN, width=2)),
-        hovertemplate=f'%{{y}} {unidade}<extra></extra>', # Tooltip com unidade correta
+        hovertemplate=f'%{{y}} {unidade}<extra></extra>',
         fill='tozeroy',
         fillcolor='rgba(0, 255, 136, 0.05)'
     ))
@@ -272,7 +286,6 @@ if escolha:
         yaxis=dict(showgrid=True, gridcolor='#222', zeroline=False, fixedrange=True),
         height=220
     )
-    # Interatividade ativada (sem zoom)
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 st.markdown("</div>", unsafe_allow_html=True)
