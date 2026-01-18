@@ -4,54 +4,48 @@ import plotly.express as px
 import plotly.graph_objects as go
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==============================================================================
-# ⚙️ CONFIGURAÇÃO E ESTILO (NEON ESTÁTICO)
+# 🎨 ESTILO NEON PRO (Híbrido: Visual Gamer + Funcionalidade Health)
 # ==============================================================================
-st.set_page_config(page_title="GymBot Performance", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="GymBot Pro", page_icon="⚡", layout="wide")
 
-# Paleta de Cores
-NEON_GREEN = "#00ff88"
-DARK_BG = "#000000"
-CARD_BG = "#121212"
+# Cores
+NEON_GREEN = "#00ff88"   # Verde Razer
+NEON_PURPLE = "#8A2BE2"  # Roxo Solo Leveling
+BG_COLOR = "#050505"     # Preto Quase Absoluto
+CARD_BG = "#101010"      # Cinza Chumbo
+TEXT_DIM = "#555555"     # Texto apagado
 
 st.markdown(f"""
 <style>
-    .stApp {{ background-color: {DARK_BG}; color: #ffffff; }}
+    .stApp {{ background-color: {BG_COLOR}; color: #fff; }}
     header[data-testid="stHeader"] {{ background-color: rgba(0,0,0,0); }}
-    .block-container {{ padding-top: 1rem; padding-bottom: 5rem; }}
+    .block-container {{ padding-top: 1rem; }}
     
+    /* Cards Modernos */
     .css-card {{
         background-color: {CARD_BG};
-        border-radius: 16px;
-        padding: 15px;
-        border: 1px solid #222;
-        box-shadow: 0 4px 15px rgba(0, 255, 136, 0.05); 
+        border-radius: 20px;
+        padding: 20px;
+        border: 1px solid #1a1a1a;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         margin-bottom: 15px;
-        text-align: center;
     }}
     
-    h1, h2, h3, h4, h5 {{ font-family: 'Inter', sans-serif; font-weight: 700; color: white !important; }}
-    .highlight-text {{ color: {NEON_GREEN}; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }}
+    h1, h2, h3 {{ font-family: 'Inter', sans-serif; font-weight: 800; margin: 0; }}
+    .highlight-text {{ color: {NEON_GREEN}; }}
     
-    .progress-container {{
-        width: 100%; background-color: #222; border-radius: 50px;
-        margin-top: 8px; margin-bottom: 5px; height: 14px; border: 1px solid #333;
-    }}
-    .progress-fill {{
-        height: 100%; background: {NEON_GREEN}; border-radius: 50px; width: 0%;
-        box-shadow: 0 0 10px {NEON_GREEN};
-    }}
-
-    .metric-label {{ font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 5px; }}
-    .metric-value {{ font-size: 1.6rem; font-weight: 800; color: #fff; }}
-    .metric-sub {{ font-size: 0.75rem; color: #555; font-weight: 500; }}
+    /* Métricas Grandes */
+    .big-metric {{ font-size: 2.5rem; font-weight: 900; color: #fff; line-height: 1; }}
+    .metric-label {{ font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 5px; }}
+    
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🔗 CONEXÃO E LEITURA DE DADOS
+# 🔗 CONEXÃO
 # ==============================================================================
 def connect_google():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -63,190 +57,215 @@ def connect_google():
     client = gspread.authorize(creds)
     return client.open("GymBot_Database")
 
-def get_user_data_completo(telefone):
+def get_data(telefone):
     try:
         sh = connect_google()
-        
-        # 1. Pega Nome
+        # Nome
         nome_real = "Atleta"
         try:
-            ws_users = sh.worksheet("Usuarios")
-            cell = ws_users.find(str(telefone))
-            if cell: nome_real = ws_users.cell(cell.row, 2).value
+            ws_u = sh.worksheet("Usuarios")
+            c = ws_u.find(str(telefone))
+            if c: nome_real = ws_u.cell(c.row, 2).value
         except: pass
 
-        # 2. Pega Treinos
-        ws_treino = sh.worksheet(str(telefone))
-        data = ws_treino.get_all_records()
+        # Treinos
+        ws = sh.worksheet(str(telefone))
+        data = ws.get_all_records()
         df = pd.DataFrame(data)
         
-        # --- VACINA CONTRA ERROS DE COLUNA ---
-        # Remove espaços extras dos nomes das colunas (Ex: "Data " vira "Data")
+        # Limpeza e Padronização
         df.columns = df.columns.str.strip()
+        mapa = {'Carga': 'Carga_Kg', 'carga': 'Carga_Kg', 'Data': 'Data', 'Exercicio': 'Exercicio'}
+        cols_atuais = {c: c for c in df.columns}
+        for k, v in mapa.items():
+            if k in cols_atuais: cols_atuais[k] = v
         
-        # Mapa de renomeação
-        mapa = {
-            'Carga': 'Carga_Kg', 'carga': 'Carga_Kg', 'Carga (kg)': 'Carga_Kg',
-            'Exercicio': 'Exercicio', 'Exercício': 'Exercicio', 'exercicio': 'Exercicio',
-            'Data': 'Data', 'data': 'Data', 'Dia': 'Data',
-            'Reps': 'Reps', 'reps': 'Reps',
-            'Series': 'Series', 'series': 'Series'
-        }
-        df = df.rename(columns=mapa)
-        
-        # Garante colunas essenciais mesmo se vazias
-        if 'Carga_Kg' not in df.columns: df['Carga_Kg'] = 0
+        if 'Carga_Kg' in df.columns: df = df.rename(columns={'Carga_Kg': 'Carga'})
+        if 'Carga' not in df.columns: df['Carga'] = 0
         if 'Data' not in df.columns: df['Data'] = datetime.today().strftime("%d/%m/%Y")
-        if 'Exercicio' not in df.columns: df['Exercicio'] = "Treino Geral"
+        
+        df['Carga'] = pd.to_numeric(df['Carga'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+        df['Data_Dt'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
         
         return df, nome_real
     except: return None, None
 
-def calcular_nivel(total_carga):
-    if total_carga < 2000: return "Iniciante", total_carga, 2000
-    elif total_carga < 10000: return "Em Evolução", total_carga, 10000
-    elif total_carga < 50000: return "Intermediário", total_carga, 50000
-    elif total_carga < 100000: return "Avançado", total_carga, 100000
-    elif total_carga < 500000: return "Elite", total_carga, 500000
-    else: return "LENDÁRIO", total_carga, 1000000
+def estimar_calorias(row):
+    # Algoritmo de Estimativa
+    nome_ex = str(row['Exercicio']).lower()
+    eh_cardio = any(x in nome_ex for x in ['esteira', 'bike', 'corrida', 'elíptico'])
+    
+    if eh_cardio:
+        return row['Carga'] * 7 # 7 kcal por minuto (média corrida leve)
+    else:
+        # Musculação: Volume x Fator
+        reps = float(row['Reps']) if 'Reps' in row and row['Reps'] != '' else 10
+        series = float(row['Series']) if 'Series' in row and row['Series'] != '' else 3
+        return (row['Carga'] * reps * series) * 0.005 # Fator estimado
 
 # ==============================================================================
-# 🔐 LOGIN
+# 📊 GRÁFICO DE BARRAS INTELIGENTE (Highlight)
 # ==============================================================================
-query_params = st.query_params
-usuario_url = query_params.get("id", None)
+def plot_barras_neon(df_semana):
+    df_semana['Dia_Str'] = df_semana['Data_Dt'].dt.strftime('%a') # Seg, Ter...
+    
+    # Cria os últimos 7 dias na ordem certa
+    dias_ordem = [(datetime.today() - timedelta(days=i)).strftime('%a') for i in range(6, -1, -1)]
+    
+    # Agrupa Kcal por dia
+    dados = df_semana.groupby('Dia_Str')['Calorias'].sum().reindex(dias_ordem, fill_value=0).reset_index()
+    
+    # Lógica de Cores: Cinza para dias passados, Verde Neon para HOJE
+    cores = ['#222222'] * 7
+    cores[-1] = NEON_GREEN # Hoje brilha
+    
+    fig = go.Figure(data=[go.Bar(
+        x=dados['Dia_Str'],
+        y=dados['Calorias'],
+        marker_color=cores,
+        marker_line_width=0,
+        text=dados['Calorias'].astype(int), # Valor em cima da barra
+        textposition='auto',
+        textfont=dict(color='#fff')
+    )])
+    
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=180,
+        showlegend=False,
+        xaxis=dict(showgrid=False, tickfont=dict(color='#666')),
+        yaxis=dict(showgrid=False, visible=False),
+        bargap=0.3 # Barras mais finas e elegantes
+    )
+    return fig
 
-if usuario_url and 'telefone_usuario' not in st.session_state:
-    df_check, nome_check = get_user_data_completo(usuario_url)
-    if df_check is not None and not df_check.empty:
-        st.session_state['telefone_usuario'] = usuario_url
-        st.session_state['df_usuario'] = df_check
-        st.session_state['nome_usuario'] = nome_check
-    else: st.error("⚠️ Perfil não encontrado.")
+# ==============================================================================
+# 🍩 DONUTS NEON
+# ==============================================================================
+def plot_donut_neon(valor, meta, cor, label):
+    pct = min(1, valor / meta)
+    restante = 1 - pct
+    
+    fig = go.Figure(data=[go.Pie(
+        values=[pct, restante],
+        hole=0.85,
+        marker_colors=[cor, "#151515"], # Cor Neon vs Fundo Escuro
+        textinfo='none',
+        hoverinfo='none',
+        sort=False,
+        direction='clockwise'
+    )])
+    
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(t=0, b=0, l=0, r=0),
+        height=120,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        annotations=[dict(
+            text=f"<span style='font-size:1.2rem; color:#fff; font-weight:900'>{int(valor)}</span>", 
+            x=0.5, y=0.55, showarrow=False
+        ), dict(
+            text=f"<span style='font-size:0.6rem; color:#666'>{label}</span>", 
+            x=0.5, y=0.35, showarrow=False
+        )]
+    )
+    return fig
 
-if 'telefone_usuario' not in st.session_state:
-    st.markdown("<br><h1 style='text-align: center;'>⚡ GYMBOT</h1>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        telefone_input = st.text_input("ID de Acesso", placeholder="Seu número...")
-        if st.button("ACESSAR", use_container_width=True):
-            df, nome = get_user_data_completo(telefone_input)
-            if df is not None and not df.empty:
-                st.session_state['telefone_usuario'] = telefone_input
-                st.session_state['df_usuario'] = df
-                st.session_state['nome_usuario'] = nome
+# ==============================================================================
+# 📱 APP PRINCIPAL
+# ==============================================================================
+query = st.query_params
+uid = query.get("id", None)
+
+if 'telefone' not in st.session_state:
+    if uid: 
+        st.session_state['telefone'] = uid
+        st.rerun()
+    else:
+        st.markdown("<br><h2 style='text-align:center'>LOGIN</h2>", unsafe_allow_html=True)
+        c1,c2,c3 = st.columns([1,2,1])
+        with c2:
+            t = st.text_input("ID", placeholder="Seu número...")
+            if st.button("ENTRAR", use_container_width=True):
+                st.session_state['telefone'] = t
                 st.rerun()
-            else: st.error("ID Inválido.")
+        st.stop()
 
-# ==============================================================================
-# 📊 DASHBOARD
-# ==============================================================================
-else:
-    df = st.session_state['df_usuario']
-    nome_exibicao = st.session_state.get('nome_usuario', 'Atleta').split()[0].upper()
+# Dados
+df, nome = get_data(st.session_state['telefone'])
+if df is None: st.error("Erro ao carregar."); st.stop()
+
+# Cálculos
+df['Calorias'] = df.apply(estimar_calorias, axis=1)
+hoje = datetime.today()
+df_hoje = df[df['Data_Dt'].dt.date == hoje.date()]
+
+cals_hoje = df_hoje['Calorias'].sum()
+treinos_hoje = len(df_hoje)
+volume_hoje = df_hoje['Carga'].sum()
+
+# --- HEADER ---
+c1, c2 = st.columns([4,1])
+with c1:
+    st.markdown(f"## Olá, <span class='highlight-text'>{nome.split()[0].upper()}</span>.", unsafe_allow_html=True)
+with c2:
+    if st.button("SAIR"): st.session_state.clear(); st.rerun()
+
+# --- DASHBOARD ---
+
+# 1. RESUMO DO DIA (DONUTS)
+st.markdown(f"<div class='css-card'>", unsafe_allow_html=True)
+st.markdown("### 🔥 Hoje", unsafe_allow_html=True)
+k1, k2, k3 = st.columns(3)
+with k1:
+    st.plotly_chart(plot_donut_neon(cals_hoje, 600, "#FF3B30", "KCAL"), use_container_width=True, config={'staticPlot':True})
+with k2:
+    st.plotly_chart(plot_donut_neon(treinos_hoje, 5, NEON_GREEN, "TREINOS"), use_container_width=True, config={'staticPlot':True})
+with k3:
+    st.plotly_chart(plot_donut_neon(volume_hoje, 10000, NEON_PURPLE, "VOL KG"), use_container_width=True, config={'staticPlot':True})
+st.markdown("</div>", unsafe_allow_html=True)
+
+# 2. GRÁFICO DE BARRAS DESTAQUE (CALORIAS SEMANAIS)
+st.markdown(f"<div class='css-card'>", unsafe_allow_html=True)
+st.markdown("### 📅 Gasto Calórico (7 Dias)", unsafe_allow_html=True)
+ini = hoje - timedelta(days=6)
+df_sem = df[(df['Data_Dt'] >= ini) & (df['Data_Dt'] <= hoje)]
+st.plotly_chart(plot_barras_neon(df_sem), use_container_width=True, config={'staticPlot':True})
+st.markdown("</div>", unsafe_allow_html=True)
+
+# 3. EVOLUÇÃO DE CARGA
+st.markdown(f"<div class='css-card'>", unsafe_allow_html=True)
+st.markdown("### 📈 Evolução", unsafe_allow_html=True)
+exs = df['Exercicio'].unique()
+escolha = st.selectbox("", exs, label_visibility="collapsed")
+
+if escolha:
+    df_f = df[df['Exercicio'] == escolha]
+    ult = df_f['Carga'].iloc[-1]
+    rec = df_f['Carga'].max()
     
-    # Tratamento de Dados
-    df['Carga_Kg'] = pd.to_numeric(df['Carga_Kg'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+    # Métricas lado a lado
+    m1, m2 = st.columns(2)
+    m1.markdown(f"<div class='metric-label'>Último</div><div class='big-metric'>{int(ult)}<span style='font-size:1rem'>kg</span></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='metric-label'>Recorde</div><div class='big-metric' style='color:{NEON_GREEN}'>{int(rec)}<span style='font-size:1rem'>kg</span></div>", unsafe_allow_html=True)
     
-    try:
-        df['Data_Dt'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
-        df['Dia_Semana'] = df['Data_Dt'].dt.day_name()
-        dias_pt = {'Monday': 'Seg', 'Tuesday': 'Ter', 'Wednesday': 'Qua', 'Thursday': 'Qui', 'Friday': 'Sex', 'Saturday': 'Sáb', 'Sunday': 'Dom'}
-        df['Dia_Semana'] = df['Dia_Semana'].map(dias_pt)
-    except:
-        df['Dia_Semana'] = "N/A"
-
-    carga_vida = df['Carga_Kg'].sum()
-    nivel_nome, xp_atual, xp_prox = calcular_nivel(carga_vida)
-    pct = min(100, int((xp_atual / xp_prox) * 100))
-    
-    # Header
-    c_perfil, c_btn = st.columns([8,1])
-    with c_perfil:
-        st.markdown(f"### Olá, <span class='highlight-text'>{nome_exibicao}</span>.", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-            <span style="font-size: 0.8rem; color: #888; font-weight: 600;">NÍVEL: <b style="color:white">{nivel_nome}</b></span>
-            <span style="font-size: 0.8rem; color: #666; font-weight: 600;">{xp_atual:,.0f} / {xp_prox:,.0f} pts</span>
-        </div>
-        <div class="progress-container"><div class="progress-fill" style="width: {pct}%;"></div></div>
-        """, unsafe_allow_html=True)
-    with c_btn:
-        if st.button("SAIR"):
-            st.session_state.clear(); st.query_params.clear(); st.rerun()
-
-    st.markdown("---")
-
-    # Gráfico 1: Frequência
-    st.markdown("##### 📅 Frequência Semanal")
-    if 'Dia_Semana' in df.columns:
-        ordem_dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
-        contagem_dias = df['Dia_Semana'].value_counts().reindex(ordem_dias, fill_value=0).reset_index()
-        contagem_dias.columns = ['Dia', 'Treinos']
-        
-        fig_week = go.Figure(data=[go.Bar(
-            x=contagem_dias['Dia'],
-            y=contagem_dias['Treinos'],
-            text=contagem_dias['Treinos'],
-            textposition='auto',
-            marker_color=NEON_GREEN,
-            marker_line_color='#004d29',
-            marker_line_width=1,
-        )])
-
-        fig_week.update_layout(
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(color="#666", family="Inter, sans-serif"),
-            margin=dict(l=0, r=0, t=20, b=0),
-            height=180,
-            xaxis=dict(showgrid=False, fixedrange=True),
-            yaxis=dict(showgrid=False, visible=False, fixedrange=True),
-            bargap=0.25
-        )
-        st.plotly_chart(fig_week, use_container_width=True, config={'staticPlot': True})
-
-    # Seleção
-    st.markdown("##### 📈 Evolução por Exercício")
-    exercicios = df['Exercicio'].unique()
-    escolha = st.selectbox("", exercicios, label_visibility="collapsed")
-    
-    if escolha:
-        df_filt = df[df['Exercicio'] == escolha]
-        ult_carga = df_filt['Carga_Kg'].iloc[-1]
-        max_carga = df_filt['Carga_Kg'].max()
-        qtd_treinos = len(df_filt)
-        
-        eh_cardio = any(x in escolha.lower() for x in ['esteira', 'corrida', 'bike', 'eliptico'])
-        unidade = "km/min" if eh_cardio else "kg"
-        
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(f"<div class='css-card'><div class='metric-label'>Último</div><div class='metric-value'>{ult_carga} <span style='font-size:0.8rem'>{unidade}</span></div></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='css-card'><div class='metric-label'>Recorde</div><div class='metric-value' style='color:{NEON_GREEN}'>{max_carga} <span style='font-size:0.8rem'>{unidade}</span></div></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='css-card'><div class='metric-label'>Treinos</div><div class='metric-value'>{qtd_treinos}</div></div>", unsafe_allow_html=True)
-
-        # Gráfico 2: Linha
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df_filt['Data'], 
-            y=df_filt['Carga_Kg'],
-            mode='lines+markers',
-            line=dict(color=NEON_GREEN, width=3, shape='spline'),
-            marker=dict(size=6, color=CARD_BG, line=dict(color=NEON_GREEN, width=2)),
-            fill='tozeroy',
-            fillcolor='rgba(0, 255, 136, 0.05)'
-        ))
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=0, r=0, t=10, b=0),
-            xaxis=dict(showgrid=False, showline=True, linecolor='#333', fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor='#222', zeroline=False, fixedrange=True),
-            height=220
-        )
-        st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
-
-    with st.expander("📜 Histórico Completo"):
-        st.dataframe(df_filt[['Data', 'Series', 'Reps', 'Carga_Kg', 'Notas']], use_container_width=True, hide_index=True)
+    # Gráfico Linha Neon
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df_f['Data'], y=df_f['Carga'],
+        mode='lines+markers',
+        line=dict(color=NEON_GREEN, width=3, shape='spline'),
+        marker=dict(size=6, color=BG_COLOR, line=dict(color=NEON_GREEN, width=2)),
+        fill='tozeroy', fillcolor='rgba(0, 255, 136, 0.1)'
+    ))
+    fig.update_layout(
+        template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=0, r=0, t=20, b=0), height=200,
+        xaxis=dict(showgrid=False, visible=False), yaxis=dict(showgrid=True, gridcolor='#222')
+    )
+    st.plotly_chart(fig, use_container_width=True, config={'staticPlot':True})
+st.markdown("</div>", unsafe_allow_html=True)
