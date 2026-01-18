@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 # ==============================================================================
 st.set_page_config(page_title="GymBot Performance", page_icon="⚡", layout="wide")
 
-# Paleta de Cores (Do seu código original)
+# Paleta de Cores
 NEON_GREEN = "#00ff88"
 DARK_BG = "#000000"
 CARD_BG = "#121212"
@@ -24,7 +24,7 @@ st.markdown(f"""
     header[data-testid="stHeader"] {{ background-color: rgba(0,0,0,0); }}
     .block-container {{ padding-top: 1rem; padding-bottom: 5rem; }}
     
-    /* CARDS (Do seu código original) */
+    /* CARDS */
     .css-card {{
         background-color: {CARD_BG};
         border-radius: 16px;
@@ -35,12 +35,12 @@ st.markdown(f"""
         text-align: center;
     }}
     
-    /* FONTE (Do seu código original - Sem Import) */
+    /* FONTE */
     h1, h2, h3, h4, h5 {{ font-family: 'Inter', sans-serif; font-weight: 700; color: white !important; }}
     
     .highlight-text {{ color: {NEON_GREEN}; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }}
     
-    /* Métricas Grandes (Adaptado para o Layout Novo) */
+    /* Métricas Grandes */
     .big-metric {{ font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; color: #fff; line-height: 1; }}
     .metric-label {{ font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; margin-bottom: 5px; }}
 
@@ -91,7 +91,7 @@ def get_data(telefone):
         df['Carga'] = pd.to_numeric(df['Carga'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         df['Data_Dt'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
         
-        # ORDENAÇÃO (Correção do Bug)
+        # ORDENAÇÃO
         df = df.dropna(subset=['Data_Dt']).sort_values(by='Data_Dt')
         
         return df, nome_real
@@ -106,7 +106,7 @@ def estimar_calorias(row):
     return (row['Carga'] * reps * series) * 0.005
 
 # ==============================================================================
-# 📊 GRÁFICOS (Visuais V12 com Estilo V9)
+# 📊 GRÁFICOS (EFEITO GLASS + INTERATIVIDADE)
 # ==============================================================================
 def plot_barras_neon(df_semana):
     df_semana = df_semana.sort_values(by='Data_Dt')
@@ -114,22 +114,26 @@ def plot_barras_neon(df_semana):
     
     dados = df_semana.groupby('Dia_Str', sort=False)['Calorias'].sum().reset_index()
     
-    # Cores Translúcidas (Verde apagado vs Verde Aceso)
-    cores = ['rgba(0, 255, 136, 0.3)'] * len(dados)
-    if len(cores) > 0: cores[-1] = 'rgba(0, 255, 136, 1.0)' # Hoje brilha
+    # --- EFEITO GLASS ---
+    # Fundo bem transparente (0.1) e Borda mais visível (0.5)
+    fill_colors = ['rgba(0, 255, 136, 0.15)'] * len(dados) 
+    line_colors = ['rgba(0, 255, 136, 0.4)'] * len(dados)  
     
-    text_colors = ['#888'] * len(dados)
-    if len(text_colors) > 0: text_colors[-1] = '#fff'
+    if len(fill_colors) > 0: 
+        fill_colors[-1] = NEON_GREEN  # Hoje é Sólido
+        line_colors[-1] = NEON_GREEN
 
     fig = go.Figure(data=[go.Bar(
         x=dados['Dia_Str'],
         y=dados['Calorias'],
-        marker_color=cores,
-        marker_line_width=0,
+        marker=dict(
+            color=fill_colors,
+            line=dict(color=line_colors, width=1.5) # Borda Glass
+        ),
         text=dados['Calorias'].astype(int),
         textposition='outside',
-        # Fonte padrão do sistema (Inter se tiver, ou sans-serif)
-        textfont=dict(color=text_colors, family="Inter, sans-serif", size=14, weight='bold')
+        textfont=dict(color='#ccc', family="Inter, sans-serif", size=12),
+        hovertemplate='%{y} kcal<extra></extra>' # Tooltip limpo
     )])
     
     fig.update_layout(
@@ -139,8 +143,8 @@ def plot_barras_neon(df_semana):
         margin=dict(l=0, r=0, t=30, b=0),
         height=200,
         showlegend=False,
-        xaxis=dict(showgrid=False, tickfont=dict(color='#888', family="Inter, sans-serif")),
-        yaxis=dict(showgrid=False, visible=False),
+        xaxis=dict(showgrid=False, tickfont=dict(color='#888', family="Inter, sans-serif"), fixedrange=True),
+        yaxis=dict(showgrid=False, visible=False, fixedrange=True),
         bargap=0.3
     )
     return fig
@@ -150,8 +154,11 @@ def plot_donut_neon(valor, meta, cor, label):
     fig = go.Figure(data=[go.Pie(
         values=[pct, 1-pct],
         hole=0.85,
-        marker_colors=[cor, "#1c1c1c"], # Fundo do donut levemente mais claro que o card
-        textinfo='none', hoverinfo='none', sort=False, direction='clockwise'
+        marker_colors=[cor, "#1c1c1c"], 
+        textinfo='none', 
+        hoverinfo='none', # Donut não precisa de hover
+        sort=False, 
+        direction='clockwise'
     )])
     fig.update_layout(
         showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=120,
@@ -197,7 +204,7 @@ cals_hoje = df_hoje['Calorias'].sum()
 treinos_hoje = len(df_hoje)
 volume_hoje = df_hoje['Carga'].sum()
 
-# --- HEADER (IGUAL V12 MAS COM FONTE ANTIGA) ---
+# --- HEADER ---
 c_perfil, c_btn = st.columns([8,1])
 with c_perfil:
     st.markdown(f"### Olá, <span class='highlight-text'>{nome.split()[0].upper()}</span>.", unsafe_allow_html=True)
@@ -207,26 +214,27 @@ with c_btn:
 
 st.markdown("---")
 
-# 1. DONUTS (Novidade V12 mantida)
+# 1. DONUTS
 st.markdown(f"<div class='css-card'><h3>🔥 Hoje</h3>", unsafe_allow_html=True)
 k1, k2, k3 = st.columns(3)
-with k1: st.plotly_chart(plot_donut_neon(cals_hoje, 600, "#FF3B30", "KCAL"), use_container_width=True, config={'staticPlot':True})
-with k2: st.plotly_chart(plot_donut_neon(treinos_hoje, 5, NEON_GREEN, "TREINOS"), use_container_width=True, config={'staticPlot':True})
-with k3: st.plotly_chart(plot_donut_neon(volume_hoje, 10000, "#8A2BE2", "VOL KG"), use_container_width=True, config={'staticPlot':True})
+with k1: st.plotly_chart(plot_donut_neon(cals_hoje, 600, "#FF3B30", "KCAL"), use_container_width=True, config={'displayModeBar': False})
+with k2: st.plotly_chart(plot_donut_neon(treinos_hoje, 5, NEON_GREEN, "TREINOS"), use_container_width=True, config={'displayModeBar': False})
+with k3: st.plotly_chart(plot_donut_neon(volume_hoje, 10000, "#8A2BE2", "VOL KG"), use_container_width=True, config={'displayModeBar': False})
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 2. BARRAS TRANSLÚCIDAS (Novidade V12 mantida)
+# 2. BARRAS TRANSLÚCIDAS (GLASS + HOVER ATIVO)
 st.markdown(f"<div class='css-card'><h3>📅 Gasto Calórico (7 Dias)</h3>", unsafe_allow_html=True)
 datas_unicas = df['Data_Dt'].drop_duplicates().sort_values(ascending=False).head(7)
 if not datas_unicas.empty:
     min_date = datas_unicas.min()
     df_sem = df[df['Data_Dt'] >= min_date]
-    st.plotly_chart(plot_barras_neon(df_sem), use_container_width=True, config={'staticPlot':True})
+    # 'displayModeBar': False remove a barra de ferramentas, mas mantém o clique/hover!
+    st.plotly_chart(plot_barras_neon(df_sem), use_container_width=True, config={'displayModeBar': False})
 else:
     st.info("Sem dados recentes.")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 3. EVOLUÇÃO
+# 3. EVOLUÇÃO (LÓGICA DE UNIDADE CORRIGIDA)
 st.markdown(f"<div class='css-card'><h3>📈 Evolução por Exercício</h3>", unsafe_allow_html=True)
 exercicios = df['Exercicio'].unique()
 escolha = st.selectbox("", exercicios, label_visibility="collapsed")
@@ -236,9 +244,13 @@ if escolha:
     ult_carga = df_filt['Carga'].iloc[-1]
     max_carga = df_filt['Carga'].max()
     
+    # Lógica para detectar se é Cardio ou Peso
+    eh_cardio = any(x in escolha.lower() for x in ['esteira', 'corrida', 'bike', 'eliptico', 'cardio'])
+    unidade = "min" if eh_cardio else "kg"
+    
     m1, m2 = st.columns(2)
-    m1.markdown(f"<div class='metric-label'>Último</div><div class='big-metric'>{int(ult_carga)}<span style='font-size:1rem'>kg</span></div>", unsafe_allow_html=True)
-    m2.markdown(f"<div class='metric-label'>Recorde</div><div class='big-metric' style='color:{NEON_GREEN}'>{int(max_carga)}<span style='font-size:1rem'>kg</span></div>", unsafe_allow_html=True)
+    m1.markdown(f"<div class='metric-label'>Último</div><div class='big-metric'>{int(ult_carga)}<span style='font-size:1rem'>{unidade}</span></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='metric-label'>Recorde</div><div class='big-metric' style='color:{NEON_GREEN}'>{int(max_carga)}<span style='font-size:1rem'>{unidade}</span></div>", unsafe_allow_html=True)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -247,6 +259,7 @@ if escolha:
         mode='lines+markers',
         line=dict(color=NEON_GREEN, width=3, shape='spline'),
         marker=dict(size=6, color=CARD_BG, line=dict(color=NEON_GREEN, width=2)),
+        hovertemplate=f'%{{y}} {unidade}<extra></extra>', # Tooltip com unidade correta
         fill='tozeroy',
         fillcolor='rgba(0, 255, 136, 0.05)'
     ))
@@ -259,6 +272,7 @@ if escolha:
         yaxis=dict(showgrid=True, gridcolor='#222', zeroline=False, fixedrange=True),
         height=220
     )
-    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+    # Interatividade ativada (sem zoom)
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 st.markdown("</div>", unsafe_allow_html=True)
